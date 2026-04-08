@@ -698,56 +698,63 @@ __global__ void inner_sweep(float * T, float * S, int * sgnv, int * sgnt, int sg
 __global__ void float_quasi_slowness(float * T, float * S, float dx, float dz, int sIdx, int sIdz, int nxx, int nzz, 
                                      int nb, float * C11, float * C13, float * C15, float * C33, float * C35, float * C55)
 {
+    const float EPS = 1e-12f;
+
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-    int i = (int)(index % nzz);
-    int j = (int)(index / nzz);
+    int i = index % nzz;
+    int j = index / nzz;
 
-    const int n = 2;
-    const int v = 3;
+    if (i < nb || i >= nzz - nb ||
+        j < nb || j >= nxx - nb)
+        return;
 
-    float p[n];
-    float C[v*v];
-    float Gv[n];
+    if (i == sIdz && j == sIdx)
+        return;
 
-    if ((i >= nb) && (i < nzz-nb) && (j >= nb) && (j < nxx-nb))
-    {
-        if (!((i == sIdz) && (j == sIdx)))    
-        {
-            float dTz = 0.5f*(T[(i+1) + j*nzz] - T[(i-1) + j*nzz]) / dz;
-            float dTx = 0.5f*(T[i + (j+1)*nzz] - T[i + (j-1)*nzz]) / dx;
+    float dTz = 0.5f * (T[(i+1)+j*nzz] - T[(i-1)+j*nzz]) / dz;
+    float dTx = 0.5f * (T[i+(j+1)*nzz] - T[i+(j-1)*nzz]) / dx;
 
-            float norm = sqrtf(dTx*dTx + dTz*dTz);
+    float norm = sqrtf(dTx*dTx + dTz*dTz) + EPS;
 
-            p[0] = dTx / norm;
-            p[1] = dTz / norm;
-            
-            C[0+0*v] = C11[index]; C[0+1*v] = C13[index]; C[0+2*v] = C15[index];
-            C[1+0*v] = C13[index]; C[1+1*v] = C33[index]; C[1+2*v] = C35[index];
-            C[2+0*v] = C15[index]; C[2+1*v] = C35[index]; C[2+2*v] = C55[index];
+    float px = dTx / norm;
+    float pz = dTz / norm;
 
-            float Ro = C33[index]*S[index]*S[index];    
-            
-            for (int indp = 0; indp < v*v; indp++)
-                C[indp] = C[indp] / Ro / Ro;
+    float c11 = C11[index];
+    float c13 = C13[index];
+    float c15 = C15[index];
+    float c33 = C33[index];
+    float c35 = C35[index];
+    float c55 = C55[index];
 
-            float Gxx = C[0+0*v]*p[0]*p[0] + C[2+2*v]*p[1]*p[1] + 2.0f*C[0+2*v]*p[0]*p[1];
-            float Gzz = C[2+2*v]*p[0]*p[0] + C[1+1*v]*p[1]*p[1] + 2.0f*C[1+2*v]*p[0]*p[1];
-            float Gxz = C[0+2*v]*p[0]*p[0] + C[1+2*v]*p[1]*p[1] + (C[0+1*v] + C[2+2*v])*p[0]*p[1]; 
-            
-            float coeff1 = Gxx + Gzz;
-            float coeff2 = Gxx - Gzz;
-            
-            float det = sqrtf((coeff2 * coeff2) / 4.0f + Gxz * Gxz);
+    float s_val = S[index];
+    float Ro = c33*s_val*s_val;
 
-            Gv[0] = coeff1 / 2.0 + det;
-            Gv[1] = coeff1 / 2.0 - det;
-            
-            if (Gv[0] < Gv[1]) {float aux = Gv[0]; Gv[0] = Gv[1]; Gv[1] = aux;} 
+    float Gxx = c11*px*px + c55*pz*pz + 2.0f*c15*px*pz;
+    float Gzz = c55*px*px + c33*pz*pz + 2.0*c35*px*pz;
+    float Gxz = c15*px*px + c35*pz*pz + (c13 + c55)*px*pz;
 
-            S[index] = 1.0f / sqrtf(Gv[0] * Ro);
-        }
-    }
+    double invRo = 1.0f / Ro / Ro;
+
+    Gxx *= invRo;
+    Gzz *= invRo;
+    Gxz *= invRo;
+
+    float trace = Gxx + Gzz;
+    float diff  = Gxx - Gzz;
+
+    float disc = 0.25f * diff * diff + Gxz * Gxz;
+    disc = max(disc, 0.0f); 
+
+    float root = sqrtf(disc);
+
+    float lambda1 = 0.5f * trace + root;
+    float lambda2 = 0.5f * trace - root;
+
+    float lambda_max = max(lambda1, lambda2);
+    lambda_max = max(lambda_max, EPS);
+
+    S[index] = 1.0f / sqrtf(lambda_max * Ro);
 }
 
 __global__ void uintc_quasi_slowness(float * T, float * S, float dx, float dz, int sIdx, int sIdz, int nxx, int nzz, 
@@ -755,65 +762,67 @@ __global__ void uintc_quasi_slowness(float * T, float * S, float dx, float dz, i
                                      float minC11, float maxC11, float minC13, float maxC13, float minC15, float maxC15, 
                                      float minC33, float maxC33, float minC35, float maxC35, float minC55, float maxC55)
 {
+    const float EPS = 1e-12f;
+
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-    int i = (int)(index % nzz);
-    int j = (int)(index / nzz);
+    int i = index % nzz;
+    int j = index / nzz;
 
-    const int n = 2;
-    const int v = 3;
+    if (i < nb || i >= nzz - nb ||
+        j < nb || j >= nxx - nb)
+        return;
 
-    float p[n];
-    float C[v*v];
-    float Gv[n];
+    if (i == sIdz && j == sIdx)
+        return;
 
-    if ((i >= nb) && (i < nzz-nb) && (j >= nb) && (j < nxx-nb))
-    {
-        if (!((i == sIdz) && (j == sIdx)))    
-        {
-            float dTz = 0.5f*(T[(i+1) + j*nzz] - T[(i-1) + j*nzz]) / dz;
-            float dTx = 0.5f*(T[i + (j+1)*nzz] - T[i + (j-1)*nzz]) / dx;
+    float dTz = 0.5f * (T[(i+1)+j*nzz] - T[(i-1)+j*nzz]) / dz;
+    float dTx = 0.5f * (T[i+(j+1)*nzz] - T[i+(j-1)*nzz]) / dx;
 
-            float norm = sqrtf(dTx*dTx + dTz*dTz);
+    float norm = sqrtf(dTx*dTx + dTz*dTz) + EPS;
 
-            p[0] = dTx / norm;
-            p[1] = dTz / norm;
-            
-            float c11 = (minC11 + (static_cast<float>(C11[index]) - 1.0f) * (maxC11 - minC11) / (COMPRESS - 1));
-            float c13 = (minC13 + (static_cast<float>(C13[index]) - 1.0f) * (maxC13 - minC13) / (COMPRESS - 1));
-            float c15 = (minC15 + (static_cast<float>(C15[index]) - 1.0f) * (maxC15 - minC15) / (COMPRESS - 1));
+    float px = dTx / norm;
+    float pz = dTz / norm;
 
-            float c33 = (minC33 + (static_cast<float>(C33[index]) - 1.0f) * (maxC33 - minC33) / (COMPRESS - 1));
-            float c35 = (minC35 + (static_cast<float>(C35[index]) - 1.0f) * (maxC35 - minC35) / (COMPRESS - 1));
+    auto decode = [&](uintc v, float vmin, float vmax) {
+        return vmin + (float(v) - 1.0f) * (vmax - vmin) / (COMPRESS - 1);
+    };
 
-            float c55 = (minC55 + (static_cast<float>(C55[index]) - 1.0f) * (maxC55 - minC55) / (COMPRESS - 1));
+    float c11 = decode(C11[index], minC11, maxC11);
+    float c13 = decode(C13[index], minC13, maxC13);
+    float c15 = decode(C15[index], minC15, maxC15);
+    float c33 = decode(C33[index], minC33, maxC33);
+    float c35 = decode(C35[index], minC35, maxC35);
+    float c55 = decode(C55[index], minC55, maxC55);
 
-            C[0+0*v] = c11; C[0+1*v] = c13; C[0+2*v] = c15;
-            C[1+0*v] = c13; C[1+1*v] = c33; C[1+2*v] = c35;
-            C[2+0*v] = c15; C[2+1*v] = c35; C[2+2*v] = c55;
+    float s_val = S[index];
+    float Ro = c33*s_val*s_val;
 
-            float Ro = c33*S[index]*S[index];    
-            
-            for (int indp = 0; indp < v*v; indp++)
-                C[indp] = C[indp] / Ro / Ro;
+    float Gxx = c11*px*px + c55*pz*pz + 2.0f*c15*px*pz;
+    float Gzz = c55*px*px + c33*pz*pz + 2.0*c35*px*pz;
+    float Gxz = c15*px*px + c35*pz*pz + (c13 + c55)*px*pz;
 
-            float Gxx = C[0+0*v]*p[0]*p[0] + C[2+2*v]*p[1]*p[1] + 2.0f*C[0+2*v]*p[0]*p[1];
-            float Gzz = C[2+2*v]*p[0]*p[0] + C[1+1*v]*p[1]*p[1] + 2.0f*C[1+2*v]*p[0]*p[1];
-            float Gxz = C[0+2*v]*p[0]*p[0] + C[1+2*v]*p[1]*p[1] + (C[0+1*v] + C[2+2*v])*p[0]*p[1]; 
-            
-            float coeff1 = Gxx + Gzz;
-            float coeff2 = Gxx - Gzz;
-            
-            float det = sqrtf((coeff2 * coeff2) / 4.0f + Gxz * Gxz);
+    double invRo = 1.0f / Ro / Ro;
 
-            Gv[0] = coeff1 / 2.0 + det;
-            Gv[1] = coeff1 / 2.0 - det;
-            
-            if (Gv[0] < Gv[1]) {float aux = Gv[0]; Gv[0] = Gv[1]; Gv[1] = aux;} 
+    Gxx *= invRo;
+    Gzz *= invRo;
+    Gxz *= invRo;
 
-            S[index] = 1.0f / sqrtf(Gv[0] * Ro);
-        }
-    }
+    float trace = Gxx + Gzz;
+    float diff  = Gxx - Gzz;
+
+    float disc = 0.25f * diff * diff + Gxz * Gxz;
+    disc = max(disc, 0.0f); 
+
+    float root = sqrtf(disc);
+
+    float lambda1 = 0.5f * trace + root;
+    float lambda2 = 0.5f * trace - root;
+
+    float lambda_max = max(lambda1, lambda2);
+    lambda_max = max(lambda_max, EPS);
+
+    S[index] = 1.0f / sqrtf(lambda_max * Ro);
 }
 
 __global__ void apply_pressure_source(float * Txx, float * Tzz, float * skw, float * wavelet, int sIdx, int sIdz, int tId, int nzz, float dx, float dz)

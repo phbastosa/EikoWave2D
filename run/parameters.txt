@@ -39,7 +39,7 @@ max_frequency = 30.0
 boundary_samples = 50
 boundary_damping = 0.005
 
-snapshot = false
+snapshot = true
 beg_snap = 1000
 end_snap = 1000
 num_snap = 1
