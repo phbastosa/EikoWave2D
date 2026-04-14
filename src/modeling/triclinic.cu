@@ -729,16 +729,14 @@ __global__ void float_quasi_slowness(float * T, float * S, float dx, float dz, i
 
     float s_val = S[index];
     float Ro = c33*s_val*s_val;
+    float invRo = 1.0f / Ro / Ro;
+
+    c11 *= invRo; c13 *= invRo; c15 *= invRo;
+    c33 *= invRo; c35 *= invRo; c55 *= invRo;
 
     float Gxx = c11*px*px + c55*pz*pz + 2.0f*c15*px*pz;
-    float Gzz = c55*px*px + c33*pz*pz + 2.0*c35*px*pz;
+    float Gzz = c55*px*px + c33*pz*pz + 2.0f*c35*px*pz;
     float Gxz = c15*px*px + c35*pz*pz + (c13 + c55)*px*pz;
-
-    double invRo = 1.0f / Ro / Ro;
-
-    Gxx *= invRo;
-    Gzz *= invRo;
-    Gxz *= invRo;
 
     float trace = Gxx + Gzz;
     float diff  = Gxx - Gzz;
@@ -797,16 +795,14 @@ __global__ void uintc_quasi_slowness(float * T, float * S, float dx, float dz, i
 
     float s_val = S[index];
     float Ro = c33*s_val*s_val;
+    float invRo = 1.0f / (Ro * Ro);
+
+    c11 *= invRo; c13 *= invRo; c15 *= invRo;
+    c33 *= invRo; c35 *= invRo; c55 *= invRo;
 
     float Gxx = c11*px*px + c55*pz*pz + 2.0f*c15*px*pz;
     float Gzz = c55*px*px + c33*pz*pz + 2.0*c35*px*pz;
     float Gxz = c15*px*px + c35*pz*pz + (c13 + c55)*px*pz;
-
-    double invRo = 1.0f / Ro / Ro;
-
-    Gxx *= invRo;
-    Gzz *= invRo;
-    Gxz *= invRo;
 
     float trace = Gxx + Gzz;
     float diff  = Gxx - Gzz;

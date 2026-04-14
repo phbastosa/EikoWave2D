@@ -93,24 +93,3 @@ C15.flatten("F").astype(np.float32, order = "F").tofile("../inputs/models/EikoSt
 C33.flatten("F").astype(np.float32, order = "F").tofile("../inputs/models/EikoStagTriX2D_C33.bin")
 C35.flatten("F").astype(np.float32, order = "F").tofile("../inputs/models/EikoStagTriX2D_C35.bin")
 C55.flatten("F").astype(np.float32, order = "F").tofile("../inputs/models/EikoStagTriX2D_C55.bin")
-
-import matplotlib.pyplot as plt
-
-Vp = 1.0 / S
-
-fig, ax = plt.subplots(figsize = (6,5))
-
-im = ax.imshow(Vp, aspect = "auto", cmap = "jet", extent = [0, (nx-1)*dx, (nz-1)*dz, 0])
-cbar = plt.colorbar(im, ax = ax, pad = 0.02)
-cbar.set_label("P wave velocity [m/s]", fontsize = 15)
-
-ax.plot(RPS[:,0], RPS[:,1], "og")
-ax.plot(SPS[:,0], SPS[:,1], "ok")
-
-ax.set_ylabel("Depth [m]", fontsize = 15)
-ax.set_xlabel("Distance [m]", fontsize = 15)
-
-fig.tight_layout()
-plt.show()
-
-
